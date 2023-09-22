@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Plan your next vacation!</title>
+</head>
+
+<body>
+    <h1>Travel Planner</h1>
+
+    <form id="preferencesForm" method="POST" action="/calculate-route">
+        <label for="location">Locations:</label>
+        <div id="locationInputs">
+            <input type="text" name="location" required>
+        </div>
+        <button type="button" onclick="addLocationInput()">Add Location</button>
+
+        <button type="submit">Plan Route</button>
+    </form>
+
+    <div id="result" class="result"></div>
+
+    <script>
+        function addLocationInput() {
+            var locationInputs = document.getElementById("locationInputs");
+            var newInput = document.createElement("input");
+            newInput.type = "text";
+            newInput.name = "location";
+            newInput.required = true;
+            locationInputs.appendChild(newInput);
+        }
+
+        document.getElementById("preferencesForm").addEventListener("submit", function (event) {
+            event.preventDefault();
+
+            var locations = Array.from(document.getElementsByName("location")).map(input => input.value);
+
+            var resultDiv = document.getElementById("result");
+            resultDiv.innerHTML = "Calculating route..."; // change later
+
+            // do API later
+            fetch("/calculate-route", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    locations: locations
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    resultDiv.innerHTML = "Optimal Route: " + data.route.join(" -> ");
+                })
+                .catch(error => {
+                    resultDiv.innerHTML = "An error occurred while calculating the route.";
+                    console.error(error);
+                });
+        });
+    </script>
+</body>
+
+</html>
