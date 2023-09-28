@@ -3,7 +3,7 @@ import requests
 url = "https://wft-geo-db.p.rapidapi.com/v1/geo/cities"
 
 querystring = {
-    "namePrefix":"pari",
+    "namePrefix":"luxemb",
     "limit":"10", 
     "sort":"-population"
 }
