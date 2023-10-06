@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, abort
 import os
 import requests
+import time
 
 app = Flask(__name__)
 X_RAPIDAPI_KEY = os.environ.get("X_RAPIDAPI_KEY")
@@ -47,6 +48,11 @@ def get_city_suggestions(input_text):
     except Exception as e:
         print(e)
         abort(500)
+
+@app.route('/calculate-route', methods=['POST'])
+def calculate_route():
+    locations = request.form.getlist('location')
+    print(locations)
 
 @app.route('/filter', methods=['POST'])
 def filter_destinations():

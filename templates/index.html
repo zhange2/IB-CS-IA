@@ -16,12 +16,13 @@
 
     <form id="preferencesForm" method="POST" action="/calculate-route">
         <label for="location">Locations:</label>
-        <div id="locationInputs">
-            <input type="text" name="location" id="locationInput" required>
-            <div id="citySuggestions"></div>
+        <div id="locationContainer"> <!-- New container for all location inputs -->
+            <div class="locationInputGroup">
+                <input type="text" name="location" class="locationInput" required>
+                <div class="citySuggestions"></div>
+            </div>
         </div>
         <button type="button" onclick="addLocationInput()">Add Location</button>
-
         <button type="submit">Plan Route</button>
     </form>
 
