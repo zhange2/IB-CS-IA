@@ -3,10 +3,33 @@
 
 <head>
     <title>Plan your next vacation!</title>
+    <!-- Include Leaflet CSS to style the map correctly -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+
     <style>
         .suggestion {
             cursor: pointer;
             padding: 5px;
+        }
+
+        #selectedLocationsList {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        .selected-location {
+            margin: 5px;
+            padding: 5px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+        }
+
+        /* Style for the map container */
+        #map {
+            height: 400px;
+            /* Set the height of the map */
+            margin-top: 20px;
+            /* Create space between the form and the map */
         }
     </style>
 </head>
@@ -23,13 +46,24 @@
             </div>
         </div>
         <button type="button" onclick="addLocationInput()">Add Location</button>
-        <button type="submit">Plan Route</button>
+        <button type="submit" id="planRouteButton">Plan Route</button>
     </form>
 
-    <div id="result" class="result"></div>
+    <div id="selectedLocationsDiv">
+        <h2>Selected Locations:</h2>
+        <ul id="selectedLocationsList">
+            <!-- JavaScript will append selected locations here -->
+        </ul>
+    </div>
 
+    <!-- Map container where the map will be displayed -->
+    <div id="map"></div>
+
+    <!-- Include Leaflet JavaScript library -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+    <!-- Your existing main.js script -->
     <script src="{{ url_for('static', filename='main.js') }}"></script>
-
 </body>
 
 </html>
