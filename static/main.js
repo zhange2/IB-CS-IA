@@ -133,10 +133,10 @@ function selectSuggestion(suggestionElement) {
 function updateSelectedLocationsUI() {
     var locationsList = document.getElementById('selectedLocationsList');
 
-    // Clear existing list items
+    // clear existing list items
     locationsList.innerHTML = '';
 
-    // Add all selected locations to the list
+    // add all selected locations to the list
     selectedLocations.forEach(function (location) {
         var listItem = document.createElement('li');
         listItem.className = 'selected-location';
@@ -147,7 +147,7 @@ function updateSelectedLocationsUI() {
 
 
 function addLocationInput() {
-    // Create new input element
+    // create new input element
     var newInput = document.createElement("input");
     newInput.type = "text";
     newInput.name = "location";
@@ -157,7 +157,7 @@ function addLocationInput() {
         fetchCitySuggestions(this);
     });
 
-    // Create a container for the new input element and suggestions div
+    // create a container for the new input element and suggestions div
     var inputGroup = document.createElement("div");
     inputGroup.className = "locationInputGroup";
     inputGroup.appendChild(newInput);
@@ -176,10 +176,14 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 });
+document.getElementById('planRouteButton').addEventListener('click', function (event) {
+    event.preventDefault(); 
+    calculateOptimalRoute(); 
+});
 
 function calculateOptimalRoute() {
-    // Assuming selectedLocations is an array of {lat, lon} objects
-    fetch('/solve-tsp', {
+    console.log("calculateOptimalRoute function called");
+    fetch('/calculate-route', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -187,11 +191,38 @@ function calculateOptimalRoute() {
         body: JSON.stringify({ locations: selectedLocations })
     })
         .then(response => response.json())
-        .then(optimizedRoute => {
-            console.log('Optimized Route:', optimizedRoute);
-            // Here you can update the map or the UI with the optimized route
+        .then(data => {
+            displayRoute(data.route); 
         })
         .catch(error => {
             console.error('Error:', error);
         });
+}
+let map;
+
+function initMap() {
+    map = L.map('map').setView([48.8566, 2.3522], 5); // Default to Paris, zoom level 5
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    initMap();
+});
+
+function displayRoute(route) {
+    const routeText = route.map(index => selectedLocations[index].label).join(' -> ');
+    document.getElementById('result').textContent = `Optimal Route: ${routeText}`;
+
+    // Clear any existing polyline
+    if (map.hasOwnProperty('routePolyline')) {
+        map.removeLayer(map.routePolyline);
+    }
+
+    const latLngs = route.map(index => [selectedLocations[index].lat, selectedLocations[index].lon]);
+    map.routePolyline = L.polyline(latLngs, { color: 'blue' }).addTo(map);
+
+    // Zoom the map to the polyline
+    map.fitBounds(map.routePolyline.getBounds());
 }

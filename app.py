@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, abort
 import os
 import requests
 import time
+from itertools import permutations
 
 app = Flask(__name__)
 X_RAPIDAPI_KEY = os.environ.get("X_RAPIDAPI_KEY")
@@ -73,18 +74,81 @@ def get_adjacency_matrix(locations):
                 if response.status_code == 200:
                     data = response.json()
                     adjacency_matrix[i][j] = data['routes'][0]['duration']
+                    adjacency_matrix[j][i] = data['routes'][0]['duration'] # THIS TOOK ME LIKE 20 MINS TO FIND 
                 else:
                     raise ConnectionError(f"Error connecting to OSRM: {response.status_code}")
     print(adjacency_matrix)
     return adjacency_matrix
 
 @app.route('/calculate-route', methods=['POST'])
-def solve_tsp(locations):
-    # This assumes you are sending the data as JSON in the body of the POST request
-    adjacency_matrix = get_adjacency_matrix(locations)
-    # Solve TSP - Method 1: Brute Force
-    
-    return jsonify({"status": "success"})
+def calculate_route():
+    print("Called calculate route")
+    try:
+        data = request.get_json()
+        locations = data['locations']
+        adjacency_matrix = get_adjacency_matrix(locations)
+        print("obtained matrix")
+        # Solve TSP - Method 1: Brute Force
+        n = len(locations)
+        print("obtained N")
+        best_route = None
+        if n <= 5:
+            start_city = 0  # Assuming the first city as the starting point
+            best_route = None
+            min_distance = float('inf')
+
+            for route in permutations(range(1, n)):
+                current_route = [start_city] + list(route) + [start_city]
+                current_distance = sum(adjacency_matrix[current_route[i]][current_route[i+1]] for i in range(n))
+
+                if current_distance < min_distance:
+                    min_distance = current_distance
+                    best_route = current_route
+        
+        # Solve TSP - Method 2: Dynamic Programming
+        elif n <= 10:
+            dp = {}
+            print("entered here")
+            for i in range(1, n):
+                dp[(1 << i, i)] = (adjacency_matrix[0][i], 0)
+            
+            for r in range(2, n+1):
+                for subset in permutations(range(1, n), r-1):
+                    bits = sum(1 << bit for bit in subset)
+
+                    for k in subset:
+                        prev = bits & ~(1 << k)
+                        res = []
+
+                        for m in range(1, n):
+                            if m == k or not (prev & (1 << m)):
+                                continue
+                            res.append((dp[(prev, m)][0] + adjacency_matrix[m][k], m))
+
+                        if res:  # Ensure res is not empty
+                            dp[(bits, k)] = min(res)
+                        else:
+                            dp[(bits, k)] = (float('inf'), -1)
+
+            bits = (2**n - 1) - 1
+            best_route = []
+            for city in range(1, n):
+                prev_distance, _ = dp[(bits, city)] # do not need the city
+                res.append((prev_distance + adjacency_matrix[city][0], city))
+                optimal_cost, last_city = min(res)
+
+            # backtrack
+            path = [last_city]
+            for i in range(n - 2, 0, -1):
+                bits, last_city = dp[(bits, last_city)][1], path[-1]
+                path.append(last_city)
+            path.append(0)
+            best_route = list(reversed(path))
+
+        return jsonify({"route": best_route})
+    except Exception as e:
+        print(e)
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/filter', methods=['POST'])
 def filter_destinations():
