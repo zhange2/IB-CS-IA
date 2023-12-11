@@ -1,12 +1,12 @@
-from flask import Flask, render_template, request, jsonify, abort
+from flask import Flask, render_template, request, jsonify, json, abort
 import os
 import requests
+from requests.structures import CaseInsensitiveDict
 import time
 from itertools import permutations
 
 app = Flask(__name__)
 X_RAPIDAPI_KEY = os.environ.get("X_RAPIDAPI_KEY")
-# Example
 places = [
     {'name': 'Eiffel Tower', 'type': 'Monument'},
     {'name': 'Louvre Museum', 'type': 'Museum'},
@@ -26,29 +26,26 @@ def get_city_suggestions(input_text):
             "format": "json",
             "limit": 5,
             "addressdetails": 1,
-            "extratags": 1  # Include extratags in the response for additional info
+            "extratags": 1  
         }
         response = requests.get(base_url, params=params)
         data = response.json()
 
         suggestions = []
         for item in data:
-            # Get the city and country from the address part of the response
+            # extract city and country 
             address = item.get('address', {})
             city = address.get('city', '') or address.get('town', '') or address.get('village', '')
             country = address.get('country', '')
             
-            # Latitude and longitude are top-level keys in the response
+            # lat + lon
             lat = item.get('lat', '')
             lon = item.get('lon', '')
         
-            # Importance is also a top-level key in the response
             importance = item.get('importance', '')
             
-            # Printing to console
             print(f"City: {city}, Country: {country}, Latitude: {lat}, Longitude: {lon}, Importance: {importance}")
 
-            # Append only city and country to suggestions list
             if city:
                 suggestions.append({"label": f"{city}, {country}", "lat": lat, "lon": lon, "importance": importance})
     
@@ -57,112 +54,133 @@ def get_city_suggestions(input_text):
     except Exception as e:
         print(e)
         abort(500)
-
-
-def get_adjacency_matrix(locations):
+    
+@app.route('/get-adjacency-matrix', methods=['POST'])
+def get_adjacency_matrix(input_text):
+    print(f"Input text: {input_text}")
+    if not input_text:
+        print("input text is empty")
+        return []
+    locations = json.loads(input_text)
     n = len(locations)
-    adjacency_matrix = [[0 if i == j else 1 for j in range(n)] for i in range(n)]
-    osrm_endpoint = 'http://router.project-osrm.org/route/v1/driving/'
-    for i in range(n):
-        for j in range(i, n):
-            if i == j:
-                continue
-            else:
-                coordinates = f'{locations[i]["lon"]},{locations[i]["lat"]};{locations[j]["lon"]},{locations[j]["lat"]}'
-                url = osrm_endpoint + coordinates + '?overview=full'
-                response = requests.get(url)
-                if response.status_code == 200:
-                    data = response.json()
-                    adjacency_matrix[i][j] = data['routes'][0]['duration']
-                    adjacency_matrix[j][i] = data['routes'][0]['duration'] # THIS TOOK ME LIKE 20 MINS TO FIND 
+    adjacency_matrix = [[0 if i == j else None for j in range(n)] for i in range(n)]
+    geoapify_url = "https://api.geoapify.com/v1/routematrix?apiKey=1981c018315840e1b4111d0e9ec78a6b"
+
+    headers = CaseInsensitiveDict()
+    headers["Content-Type"] = "application/json"
+
+    # make api call
+    sources = [{"location": [loc["lon"], loc["lat"]]} for loc in locations]
+
+    data = {
+        "mode": "drive",
+        "sources": sources,
+        "targets": sources  
+    }
+  
+    response = requests.post(geoapify_url, headers=headers, data=json.dumps(data))
+    print(response)
+    if response.status_code == 200:
+        matrix_data = response.json()
+        print(matrix_data)
+        for i in range(n):
+            for j in range(i+1, n):
+                distance = matrix_data['sources_to_targets'][i][j]['time']
+                if distance < 3000000:  # threshold for an impossible route
+                    adjacency_matrix[i][j] = distance
+                    adjacency_matrix[j][i] = distance
                 else:
-                    raise ConnectionError(f"Error connecting to OSRM: {response.status_code}")
+                    adjacency_matrix[i][j] = float('inf')
+                    adjacency_matrix[j][i] = float('inf')
+    elif response.status_code == 400:
+        # Raise a ValueError that you will catch in the calling function
+        error_details = response.json()
+        raise ValueError(f"Route not found between some locations. Make sure all your locations are reachable by drive. Details: {error_details}")
+    else:
+        # For other errors, raise a generic connection error
+        raise ConnectionError(f"Error with Geoapify API: {response.status_code}")
+
     print(adjacency_matrix)
     return adjacency_matrix
 
+
+
+def find_min_cost_path(cost):
+    n = len(cost)
+    MAX_INT = 1 << n
+    dp = [[float('inf')] * n for _ in range(MAX_INT)]
+    dp[1][0] = 0
+
+    for mask in range(1, MAX_INT):
+        for u in range(n):
+            if mask & (1 << u):
+                for v in range(n):
+                    if mask & (1 << v) and u != v:
+                        dp[mask][u] = min(dp[mask][u], dp[mask ^ (1 << u)][v] + cost[v][u])
+
+    min_cost = min(dp[MAX_INT - 1])
+    end_node = dp[MAX_INT - 1].index(min_cost)
+
+    mask = MAX_INT - 1
+    path = [end_node]
+
+    while mask and end_node != 0:
+        for v in range(n):
+            if mask & (1 << v) and dp[mask][end_node] == dp[mask ^ (1 << end_node)][v] + cost[v][end_node]:
+                path.append(v)
+                mask ^= (1 << end_node)
+                end_node = v
+                break
+
+    return min_cost, list(reversed(path))
+
+MAX_LOCATIONS = 25 # Maximum number of locations allowed
+
 @app.route('/calculate-route', methods=['POST'])
 def calculate_route():
-    print("Called calculate route")
     try:
         data = request.get_json()
+
+        # Check for empty input
+        if not data or 'locations' not in data or not data['locations']:
+            return jsonify({"error": "No locations provided"}), 400
+
+        # Check for the number of locations
+        if len(data['locations']) > MAX_LOCATIONS:
+            return jsonify({"error": f"Too many locations. The maximum allowed is {MAX_LOCATIONS}."}), 400
+
         locations = data['locations']
-        adjacency_matrix = get_adjacency_matrix(locations)
-        print("obtained matrix")
-        # Solve TSP - Method 1: Brute Force
-        n = len(locations)
-        print("obtained N")
-        best_route = None
-        if n <= 5:
-            start_city = 0  # Assuming the first city as the starting point
-            best_route = None
-            min_distance = float('inf')
+        distance_matrix = get_adjacency_matrix(json.dumps(locations))
 
-            for route in permutations(range(1, n)):
-                current_route = [start_city] + list(route) + [start_city]
-                current_distance = sum(adjacency_matrix[current_route[i]][current_route[i+1]] for i in range(n))
+        # Check for unreachable locations within the distance matrix
+        if any(float('inf') in row for row in distance_matrix):
+            return jsonify({"error": "One or more locations are unreachable."}), 400
 
-                if current_distance < min_distance:
-                    min_distance = current_distance
-                    best_route = current_route
-        
-        # Solve TSP - Method 2: Dynamic Programming
-        elif n <= 10:
-            dp = {}
-            print("entered here")
-            for i in range(1, n):
-                dp[(1 << i, i)] = (adjacency_matrix[0][i], 0)
-            
-            for r in range(2, n+1):
-                for subset in permutations(range(1, n), r-1):
-                    bits = sum(1 << bit for bit in subset)
+        min_path_cost, shortest_path = find_min_cost_path(distance_matrix)
 
-                    for k in subset:
-                        prev = bits & ~(1 << k)
-                        res = []
+        if not shortest_path:
+            return jsonify({"error": "Could not calculate the route."}), 500
 
-                        for m in range(1, n):
-                            if m == k or not (prev & (1 << m)):
-                                continue
-                            res.append((dp[(prev, m)][0] + adjacency_matrix[m][k], m))
+        return jsonify({"route": shortest_path, "cost": min_path_cost})
 
-                        if res:  # Ensure res is not empty
-                            dp[(bits, k)] = min(res)
-                        else:
-                            dp[(bits, k)] = (float('inf'), -1)
-
-            bits = (2**n - 1) - 1
-            best_route = []
-            for city in range(1, n):
-                prev_distance, _ = dp[(bits, city)] # do not need the city
-                res.append((prev_distance + adjacency_matrix[city][0], city))
-                optimal_cost, last_city = min(res)
-
-            # backtrack
-            path = [last_city]
-            for i in range(n - 2, 0, -1):
-                bits, last_city = dp[(bits, last_city)][1], path[-1]
-                path.append(last_city)
-            path.append(0)
-            best_route = list(reversed(path))
-
-        return jsonify({"route": best_route})
-    except Exception as e:
-        print(e)
+    except ValueError as e:
+        # Catch the ValueError raised when there is a 400 status code from Geoapify
+        return jsonify({"error": str(e)}), 400
+    except ConnectionError as e:
+        # Catch other connection-related errors
         return jsonify({"error": str(e)}), 500
-
-@app.route('/filter', methods=['POST'])
-def filter_destinations():
-    preference = request.form.get('preference')
-    filtered_places = [place for place in places if place['type'] == preference]
-    return render_template('index.html', places=filtered_places)
+    except Exception as e:
+        # Catch all other exceptions
+        return jsonify({"error": "An internal error occurred."}), 500
 
 @app.route('/log-selected-locations', methods=['POST'])
 def log_selected_locations():
-    selected_locations = request.json
+    data_string = request.data.decode('utf-8')
+    selected_locations = json.loads(data_string)
     print("Current Array", selected_locations)
     print("Adjacency Matrix")
-    get_adjacency_matrix(selected_locations)
+    get_adjacency_matrix(json.dumps(selected_locations))
     return jsonify({"status": "success"})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5001)

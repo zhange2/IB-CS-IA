@@ -1,30 +1,48 @@
+let selectedEndLocation = null;
 let debounceTimeout;
 function fetchCitySuggestions(input) {
-    console.log("Function triggered");  
-    var suggestionDiv = input.nextElementSibling;
-    var inputValue = input.value.trim();
+    console.log("Function triggered");
+    var suggestionDivId = input.id === 'endLocation' ? 'endLocationSuggestions' : 'citySuggestions';
+    var suggestionDiv = document.getElementById(suggestionDivId);
 
+    // Clear any existing timeout to debounce the input
     if (debounceTimeout) {
         clearTimeout(debounceTimeout);
     }
 
     debounceTimeout = setTimeout(() => {
         var inputValue = input.value.trim();
+        var isEndLocation = input.id === 'endLocation'; // Check if this is the end location input
 
-        if (inputValue.length > 0) {
+        // Check if input value is already in selectedLocations
+        var isAlreadySelected = selectedLocations.some(location => location.label.trim().toLowerCase() === inputValue.toLowerCase());
+
+        // Only proceed with fetch if input value is not already selected
+        if (!isAlreadySelected && inputValue.length > 0) {
             fetch(`/get-city-suggestions/${inputValue}`)
                 .then(response => response.json())
                 .then(data => {
-                    populateSuggestions(suggestionDiv, data);
+                    if (isEndLocation) {
+                        populateSuggestions(document.getElementById('endLocationSuggestions'), data, true);
+                    } else {
+                        populateSuggestions(input.nextElementSibling, data, false);
+                    }
                 })
                 .catch(error => {
                     console.error(error);
                 });
         } else {
-            suggestionDiv.innerHTML = "";  // Clear the suggestions if input is empty
+            // Clear suggestions if input value is already selected or empty
+            if (isEndLocation) {
+                document.getElementById('endLocationSuggestions').innerHTML = "";
+            } else {
+                suggestionDiv.innerHTML = "";
+            }
         }
-    }, 1000);  // 1 second delay
+    }, 1000);
 }
+
+
 
 function addLocationInput() {
     // Create new input element
@@ -52,7 +70,7 @@ function addLocationInput() {
     container.appendChild(inputGroup);
 }
 
-function populateSuggestions(suggestionDiv, suggestions) {
+function populateSuggestions(suggestionDiv, suggestions, isEndLocation) {
     suggestionDiv.innerHTML = ""; // Clear previous suggestions
 
     suggestions.forEach(function (suggestionObj) {
@@ -60,7 +78,12 @@ function populateSuggestions(suggestionDiv, suggestions) {
         suggestion.textContent = suggestionObj.label; // Use the 'label' property of the suggestion object
         suggestion.classList.add("suggestion");
         suggestion.addEventListener("click", function () {
-            selectSuggestion(this);
+            if (isEndLocation) {
+                selectEndLocationSuggestion(this);
+            } else {
+                selectSuggestion(this);
+            }
+            suggestionDiv.innerHTML = ''; // Clear the suggestions after a click
         });
         // Store the additional data as data attributes
         suggestion.setAttribute("data-lat", suggestionObj.lat);
@@ -70,7 +93,8 @@ function populateSuggestions(suggestionDiv, suggestions) {
     });
 }
 
-let selectedLocations = []; 
+
+let selectedLocations = [];
 function selectSuggestion(suggestionElement) {
     var inputField = suggestionElement.parentElement.previousElementSibling;
 
@@ -101,7 +125,13 @@ function selectSuggestion(suggestionElement) {
         });
     // Add the location data object to the selectedLocations array
     selectedLocations.push(locationData);
+    addMarker(locationData.lat, locationData.lon, locationData.label);
     console.log(selectedLocations)
+
+    // Clear the input field and suggestions
+    var suggestionsDiv = suggestionElement.parentElement;
+    suggestionsDiv.innerHTML = '';
+
     // make sure that updated array is sent to server
     fetch('/log-selected-locations', {
         method: 'POST',
@@ -110,18 +140,18 @@ function selectSuggestion(suggestionElement) {
         },
         body: JSON.stringify(selectedLocations)
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok ' + response.statusText);
-        }
-        return response.json();
-    })
-    .then(data => {
-        console.log('Server response:', data);
-    })
-    .catch((error) => {
-        console.error('Error:', error);
-    });
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok ' + response.statusText);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Server response:', data);
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+        });
 
     // Update the UI to show the selected locations
     updateSelectedLocationsUI();
@@ -168,35 +198,36 @@ function addLocationInput() {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-    var locationInputs = document.getElementsByName("location");
-
-    locationInputs.forEach(function (input) {
-        input.addEventListener("input", function () {
-            fetchCitySuggestions(this);
-        });
+    initMap();
+    document.getElementsByName("location").forEach(input => input.addEventListener("input", () => fetchCitySuggestions(input)));
+    document.getElementById('planRouteButton').addEventListener('click', (event) => {
+        event.preventDefault();
+        calculateOptimalRoute();
     });
 });
+
 document.getElementById('planRouteButton').addEventListener('click', function (event) {
-    event.preventDefault(); 
-    calculateOptimalRoute(); 
+    event.preventDefault();
+    calculateOptimalRoute();
 });
 
 function calculateOptimalRoute() {
     console.log("calculateOptimalRoute function called");
     fetch('/calculate-route', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ locations: selectedLocations })
     })
-        .then(response => response.json())
-        .then(data => {
-            displayRoute(data.route); 
-        })
-        .catch(error => {
-            console.error('Error:', error);
+        .then(response => response.ok ? response.json() : Promise.reject(response))
+        .then(data => { if (data.error) throw new Error(data.error); displayRoute(data.route); })
+        .catch(errorResponse => {
+            errorResponse.json().then(displayError).catch(() => displayError("An unexpected error occurred."));
         });
+}
+
+function displayError(message) {
+    const resultDiv = document.getElementById('result');
+    resultDiv.innerHTML = `<p class="error-message">${message}</p>`;
 }
 let map;
 
@@ -207,22 +238,131 @@ function initMap() {
     }).addTo(map);
 }
 
-document.addEventListener("DOMContentLoaded", function () {
-    initMap();
+// At the bottom of the main.js file
+document.getElementById('setEndLocation').addEventListener('change', function () {
+    var endLocationInput = document.getElementById('endLocationInputGroup');
+    endLocationInput.style.display = this.checked ? 'block' : 'none';
 });
+
+
+function uncheckEndLocation() {
+    if (document.getElementById('returnToStart').checked) {
+        document.getElementById('setEndLocation').checked = false;
+    }
+}
+
+function uncheckReturnToStart() {
+    if (document.getElementById('setEndLocation').checked) {
+        document.getElementById('returnToStart').checked = false;
+    }
+}
+
+function selectEndLocationSuggestion(suggestionElement) {
+    var inputField = document.getElementById('endLocation');
+    inputField.value = suggestionElement.textContent; // Set the input field value to the text content
+    var data = {
+        label: suggestionElement.textContent,
+        lat: suggestionElement.getAttribute('data-lat'),
+        lon: suggestionElement.getAttribute('data-lon'),
+        importance: suggestionElement.getAttribute('data-importance')
+    };
+    // You can add the selected end location to a global variable or handle it as needed
+    selectedEndLocation = data;
+    document.getElementById('endLocationSuggestions').innerHTML = '';
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function () {
+        const context = this;
+        const args = arguments;
+        const later = function () {
+            timeout = null;
+            func.apply(context, args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+function addMarker(lat, lon, label) {
+    var marker = L.marker([lat, lon]).addTo(map);
+    marker.bindPopup(`<strong>${label}</strong>`, { className: 'custom-popup' }); // Add a class for custom styling
+    marker.on('mouseover', function (e) {
+        this.openPopup();
+    });
+    marker.on('mouseout', function (e) {
+        this.closePopup();
+    });
+}
+
 
 function displayRoute(route) {
     const routeText = route.map(index => selectedLocations[index].label).join(' -> ');
-    document.getElementById('result').textContent = `Optimal Route: ${routeText}`;
+    document.getElementById('result').innerHTML = `<strong>Optimal Route:</strong> ${routeText}`;
 
-    // Clear any existing polyline
+    // Clear any existing polylines
     if (map.hasOwnProperty('routePolyline')) {
         map.removeLayer(map.routePolyline);
     }
 
-    const latLngs = route.map(index => [selectedLocations[index].lat, selectedLocations[index].lon]);
-    map.routePolyline = L.polyline(latLngs, { color: 'blue' }).addTo(map);
+    // Use Leaflet's polyline to draw the path
+    let latlngs = route.map(index => [selectedLocations[index].lat, selectedLocations[index].lon]);
+    let polyline = L.polyline(latlngs, {
+        color: 'blue', 
+        weight: 5, 
+        opacity: 0.7,
+        smoothFactor: 1
+    }).addTo(map);
 
-    // Zoom the map to the polyline
-    map.fitBounds(map.routePolyline.getBounds());
+    // Fit the map to the polyline
+    map.fitBounds(polyline.getBounds());
+
+    // Save the polyline to the map object for later removal
+    map.routePolyline = polyline;
+}
+
+// Adjust the map initialization to include a touch of animation
+function initMap() {
+    map = L.map('map').setView([48.8566, 2.3522], 5, { animation: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+}
+
+// Call initMap when the DOM is loaded
+document.addEventListener("DOMContentLoaded", initMap);
+
+let colorIndex = 0;
+const colors = ['#FF0000', '#008000', '#FFC0CB', '#800080', '#FFA500', '#0000FF', '#FFFF00']; // color set to rotate between
+
+function fetchAndDisplaySegment(startLocation, endLocation, segmentIndex) {
+    const apiKey = '1981c018315840e1b4111d0e9ec78a6b';
+    const waypoints = `${startLocation.lat},${startLocation.lon}|${endLocation.lat},${endLocation.lon}`;
+    const url = `https://api.geoapify.com/v1/routing?waypoints=${waypoints}&mode=drive&apiKey=${apiKey}`;
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            const routeLayer = L.geoJSON(data, {
+                color: colors[colorIndex % colors.length],
+                onEachFeature: function (feature, layer) {
+                    const time = feature.properties.time / 3600; // Convert time to hours
+                    const distance = feature.properties.distance / 1000; // Convert distance to kilometers
+                    const popupContent = `Segment ${segmentIndex + 1}: ${startLocation.label} to ${endLocation.label}<br>Time: ${time.toFixed(2)} hours<br>Distance: ${distance.toFixed(2)} km`;
+                    layer.bindPopup(popupContent);
+                }
+            }).addTo(map);
+
+            // Bind mouseover and mouseout events to each segment
+            routeLayer.on('mouseover', function (e) {
+                e.layer.openPopup();
+            });
+            routeLayer.on('mouseout', function (e) {
+                e.layer.closePopup();
+            });
+
+            colorIndex++;
+        })
+        .catch(error => console.error('Error fetching route:', error));
 }

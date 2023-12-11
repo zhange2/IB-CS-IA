@@ -3,13 +3,78 @@
 
 <head>
     <title>Plan your next vacation!</title>
-    <!-- Include leaflet -->
+    <!-- Include leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <!-- Include a font from Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600&display=swap" rel="stylesheet">
 
     <style>
-        .suggestion {
+        body {
+            font-family: 'Open Sans', sans-serif;
+            color: #333;
+            line-height: 1.6;
+            background: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+
+        h1,
+        h2 {
+            color: #444;
+        }
+
+        .container {
+            width: 80%;
+            margin: auto;
+            overflow: hidden;
+        }
+
+        #map {
+            height: 500px;
+            margin: 20px 0;
+        }
+
+        .locationInputGroup {
+            background: #fff;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        input[type=text] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        #planRouteButton {
+            background: #5cb85c;
+            color: #fff;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
             cursor: pointer;
-            padding: 5px;
+            font-size: 16px;
+            margin: 5px;
+        }
+
+        #planRouteButton:hover {
+            background: #4cae4c;
+        }
+
+        input[type=checkbox] {
+            margin: 0 5px 0 20px;
+        }
+
+        #selectedLocationsDiv {
+            background: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
         }
 
         #selectedLocationsList {
@@ -20,54 +85,174 @@
         .selected-location {
             margin: 5px;
             padding: 5px;
-            background-color: #f0f0f0;
+            background-color: #e7e7e7;
             border: 1px solid #ddd;
+            border-radius: 5px;
         }
 
-        #map {
-            height: 400px;
+        #result {
+            background: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+
+        .suggestion {
+            cursor: pointer;
+            padding: 5px;
+            background: #fff;
+            border-bottom: 1px solid #eee;
+        }
+
+        .suggestion:last-child {
+            border-bottom: none;
+        }
+
+        .suggestion:hover {
+            background: #f9f9f9;
+        }
+
+        .citySuggestions {
+            position: absolute;
+            z-index: 1000;
+            width: 100%;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        .btn {
+            display: inline-block;
+            background: #008CBA;
+            color: #ffffff;
+            padding: 10px 20px;
+            margin: 10px;
+            border: none;
+            border-radius: 5px;
+            transition: background 0.3s ease;
+        }
+
+        .btn:hover,
+        .btn:focus {
+            background: #007B9A;
+            color: #ffffff;
+            text-decoration: none;
+        }
+
+        /* Style for the checkboxes */
+        .checkbox-inline {
+            display: flex;
+            align-items: center;
+            margin-right: 20px;
+        }
+
+        .checkbox-inline input[type=checkbox] {
+            margin-right: 5px;
+        }
+
+        /* Card-like design for selected locations */
+        .selected-location {
+            background: #ffffff;
+            border: 1px solid #dddddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 10px;
+            margin-bottom: 10px;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .selected-location:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        /* Improvements for the result display */
+        #result {
+            padding: 20px;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 30px;
+        }
+
+        /* Additional styles for the layout */
+        .locationInputGroup label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .map-container {
+            position: relative;
+        }
+
+        .map-overlay {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 5px;
+            padding: 5px 10px;
+            font-size: 0.9em;
+        }
+
+        /* Media query for responsive design */
+        @media (max-width: 768px) {
+            .container {
+                width: 95%;
+            }
+
+            #map {
+                height: 300px;
+            }
+        }
+        .custom-popup.leaflet-popup-content-wrapper {
+            background: #ffffff;
+            color: #333;
+            font-size: 14px;
+            border-radius: 8px;
+            padding: 5px;
+            box-shadow: 0 3px 14px rgba(0, 0, 0, 0.4);
+        }
+
+        .custom-popup.leaflet-popup-tip-container {
+            display: none;
+        }
+        .error-message {
+            color: #ff3860;
+            background: #ffe5e5;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ff3860;
             margin-top: 20px;
         }
     </style>
 </head>
 
 <body>
-    <h1>Travel Planner</h1>
+    <div class="container">
+        <h1>Travel Planner</h1>
 
-    <form id="preferencesForm" method="POST" action="/calculate-route">
-        <label for="location">Locations:</label>
-        <div id="locationContainer"> <!-- New container for all location inputs -->
-            <div class="locationInputGroup">
-                <input type="text" name="location" class="locationInput" required>
-                <div class="citySuggestions"></div>
+        <form id="preferencesForm" method="POST" action="/calculate-route">
+            <div id="locationContainer" class="locationInputGroup">
+                <label for="location">Input Locations (select your starting location first):</label>
+                <input type="text" name="location" id="startLocation" class="locationInput" required>
+                <div id="startLocationSuggestions" class="citySuggestions"></div>
             </div>
+            <button type="submit" id="planRouteButton">Plan Route</button>
+        </form>
+        <div id="selectedLocationsDiv">
+            <h2>Selected Locations:</h2>
+            <ul id="selectedLocationsList">
+            </ul>
         </div>
-        <button type="button" onclick="addLocationInput()">Add Location</button>
-        <button type="submit" id="planRouteButton">Plan Route</button>
-    </form>
 
-    <div id="selectedLocationsDiv">
-        <h2>Selected Locations:</h2>
-        <ul id="selectedLocationsList">
-        </ul>
+        <div id="map"></div>
+
+        <div id="result"></div>
     </div>
 
-    <div id="map"></div>
-
-    <div id="result"></div>
-
+    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-
+    <!-- Your main.js -->
     <script src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
 
 </html>
-
-<!-- Paris Marseille Toulouse Lyon Montpellier -->
-<!-- Paris Lyon Marseille Montpellier Toulouse Paris -->
-
-<!-- Things to do:  -->
-<!-- Map: Add some more functionalities -->
-<!-- Errors: no route between two locations, plan route with no locations -->
-<!-- Delete add location button -->
-<!-- Ideas: save routes (login), recommend some locations, choose from multiple routes? -->
