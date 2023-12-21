@@ -1,5 +1,10 @@
-let selectedEndLocation = null;
+const colors = ['#FF0000', '#008000', '#FFC0CB', '#800080', '#FFA500', '#0000FF', '#FFFF00'];
+
+let colorIndex = 0;
+let selectedLocations = [];
+let map;
 let debounceTimeout;
+let selectedEndLocation = null;
 function fetchCitySuggestions(input) {
     console.log("Function triggered");
     var suggestionDivId = input.id === 'endLocation' ? 'endLocationSuggestions' : 'citySuggestions';
@@ -94,7 +99,6 @@ function populateSuggestions(suggestionDiv, suggestions, isEndLocation) {
 }
 
 
-let selectedLocations = [];
 function selectSuggestion(suggestionElement) {
     var inputField = suggestionElement.parentElement.previousElementSibling;
 
@@ -120,9 +124,14 @@ function selectSuggestion(suggestionElement) {
         .then(data => {
             console.log('Success:', data);
         })
-        .catch((error) => {
-            console.error('Error:', error);
+        .catch(errorResponse => {
+            errorResponse.json().then(error => {
+                displayError(error.message); // Assuming the error object has a 'message' property
+            }).catch(() => {
+                displayError("An unexpected error occurred."); // Fallback error message
+            });
         });
+
     // Add the location data object to the selectedLocations array
     selectedLocations.push(locationData);
     addMarker(locationData.lat, locationData.lon, locationData.label);
@@ -149,9 +158,14 @@ function selectSuggestion(suggestionElement) {
         .then(data => {
             console.log('Server response:', data);
         })
-        .catch((error) => {
-            console.error('Error:', error);
+        .catch(errorResponse => {
+            errorResponse.json().then(error => {
+                displayError(error.message); // Assuming the error object has a 'message' property
+            }).catch(() => {
+                displayError("An unexpected error occurred."); // Fallback error message
+            });
         });
+
 
     // Update the UI to show the selected locations
     updateSelectedLocationsUI();
@@ -219,7 +233,10 @@ function calculateOptimalRoute() {
         body: JSON.stringify({ locations: selectedLocations })
     })
         .then(response => response.ok ? response.json() : Promise.reject(response))
-        .then(data => { if (data.error) throw new Error(data.error); displayRoute(data.route); })
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            displayRoute(data.route); // Assume this is an ordered list of location indices
+        })
         .catch(errorResponse => {
             errorResponse.json().then(displayError).catch(() => displayError("An unexpected error occurred."));
         });
@@ -229,7 +246,7 @@ function displayError(message) {
     const resultDiv = document.getElementById('result');
     resultDiv.innerHTML = `<p class="error-message">${message}</p>`;
 }
-let map;
+
 
 function initMap() {
     map = L.map('map').setView([48.8566, 2.3522], 5); // Default to Paris, zoom level 5
@@ -296,32 +313,23 @@ function addMarker(lat, lon, label) {
     });
 }
 
-
-function displayRoute(route) {
-    const routeText = route.map(index => selectedLocations[index].label).join(' -> ');
+function displayRoute(routeIndices) {
+    const routeText = routeIndices.map(index => selectedLocations[index].label).join(' -> ');
     document.getElementById('result').innerHTML = `<strong>Optimal Route:</strong> ${routeText}`;
 
-    // Clear any existing polylines
+    // Remove existing polylines
     if (map.hasOwnProperty('routePolyline')) {
-        map.removeLayer(map.routePolyline);
+        map.routePolyline.forEach(polyline => map.removeLayer(polyline));
     }
+    map.routePolyline = [];
 
-    // Use Leaflet's polyline to draw the path
-    let latlngs = route.map(index => [selectedLocations[index].lat, selectedLocations[index].lon]);
-    let polyline = L.polyline(latlngs, {
-        color: 'blue', 
-        weight: 5, 
-        opacity: 0.7,
-        smoothFactor: 1
-    }).addTo(map);
-
-    // Fit the map to the polyline
-    map.fitBounds(polyline.getBounds());
-
-    // Save the polyline to the map object for later removal
-    map.routePolyline = polyline;
+    // Display each segment of the route
+    for (let i = 0; i < routeIndices.length - 1; i++) {
+        const startLocation = selectedLocations[routeIndices[i]];
+        const endLocation = selectedLocations[routeIndices[i + 1]];
+        fetchAndDisplaySegment(startLocation, endLocation, i);
+    }
 }
-
 // Adjust the map initialization to include a touch of animation
 function initMap() {
     map = L.map('map').setView([48.8566, 2.3522], 5, { animation: true });
@@ -333,8 +341,6 @@ function initMap() {
 // Call initMap when the DOM is loaded
 document.addEventListener("DOMContentLoaded", initMap);
 
-let colorIndex = 0;
-const colors = ['#FF0000', '#008000', '#FFC0CB', '#800080', '#FFA500', '#0000FF', '#FFFF00']; // color set to rotate between
 
 function fetchAndDisplaySegment(startLocation, endLocation, segmentIndex) {
     const apiKey = '1981c018315840e1b4111d0e9ec78a6b';
@@ -345,7 +351,8 @@ function fetchAndDisplaySegment(startLocation, endLocation, segmentIndex) {
         .then(response => response.json())
         .then(data => {
             const routeLayer = L.geoJSON(data, {
-                color: colors[colorIndex % colors.length],
+                // color: colors[colorIndex % colors.length],
+                color: 'blue',
                 onEachFeature: function (feature, layer) {
                     const time = feature.properties.time / 3600; // Convert time to hours
                     const distance = feature.properties.distance / 1000; // Convert distance to kilometers
@@ -359,7 +366,7 @@ function fetchAndDisplaySegment(startLocation, endLocation, segmentIndex) {
                 e.layer.openPopup();
             });
             routeLayer.on('mouseout', function (e) {
-                e.layer.closePopup();
+                e.layer.closePopup(); 
             });
 
             colorIndex++;

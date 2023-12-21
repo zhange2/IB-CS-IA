@@ -62,8 +62,6 @@ def get_adjacency_matrix(input_text):
         print("input text is empty")
         return []
     locations = json.loads(input_text)
-    n = len(locations)
-    adjacency_matrix = [[0 if i == j else None for j in range(n)] for i in range(n)]
     geoapify_url = "https://api.geoapify.com/v1/routematrix?apiKey=1981c018315840e1b4111d0e9ec78a6b"
 
     headers = CaseInsensitiveDict()
@@ -78,6 +76,8 @@ def get_adjacency_matrix(input_text):
         "targets": sources  
     }
   
+    n = len(locations)
+    adjacency_matrix = [[0 if i == j else None for j in range(n)] for i in range(n)]
     response = requests.post(geoapify_url, headers=headers, data=json.dumps(data))
     print(response)
     if response.status_code == 200:
@@ -93,7 +93,7 @@ def get_adjacency_matrix(input_text):
                     adjacency_matrix[i][j] = float('inf')
                     adjacency_matrix[j][i] = float('inf')
     elif response.status_code == 400:
-        # Raise a ValueError that you will catch in the calling function
+        # Raise a ValueError if locations are unreachable
         error_details = response.json()
         raise ValueError(f"Route not found between some locations. Make sure all your locations are reachable by drive. Details: {error_details}")
     else:
@@ -160,7 +160,7 @@ def calculate_route():
 
         if not shortest_path:
             return jsonify({"error": "Could not calculate the route."}), 500
-
+        print("Route:", shortest_path, "cost:", min_path_cost)
         return jsonify({"route": shortest_path, "cost": min_path_cost})
 
     except ValueError as e:
@@ -177,10 +177,10 @@ def calculate_route():
 def log_selected_locations():
     data_string = request.data.decode('utf-8')
     selected_locations = json.loads(data_string)
-    print("Current Array", selected_locations)
-    print("Adjacency Matrix")
-    get_adjacency_matrix(json.dumps(selected_locations))
+    # print("Current Array", selected_locations)
+    # print("Adjacency Matrix")
+    # get_adjacency_matrix(json.dumps(selected_locations))
     return jsonify({"status": "success"})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5000)
